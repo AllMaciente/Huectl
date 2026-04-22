@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 use anyhow::{Result, Context};
 use colored::*;
 
-use crate::theme::{Theme, load_theme};
+use crate::theme::load_theme;
 use crate::cache::{Cache, save_colors_json, save_current_theme};
 use crate::template::process_templates;
 use crate::wallpaper::{apply_wallpaper, find_theme_wallpaper};
