@@ -43,7 +43,7 @@ pub fn apply_wallpaper(wp_path: &Path, cache_dir: &Path) -> Result<()> {
         .context("Cannot write wallpaper cache file")?;
 
     let setters: &[(&str, &[&str])] = &[
-        ("swww",      &["img"]),
+        ("awww",      &["img"]),
         ("swaybg",    &["--image"]),
         ("feh",       &["--bg-scale"]),
         ("nitrogen",  &["--set-scaled", "--save"]),
