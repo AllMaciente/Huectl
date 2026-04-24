@@ -46,6 +46,8 @@ pub enum Commands {
     },
 
     Current,
+
+    Reload,
 }
 
 #[derive(Subcommand)]
@@ -266,6 +268,47 @@ pub fn cmd_current() -> Result<()> {
         let path = std::fs::read_to_string(&wp_file)?.trim().to_string();
         println!("  Wallpaper: {}", path.dimmed());
     }
+    Ok(())
+}
+
+pub fn cmd_reload() -> Result<()> {
+    let cache = cache_dir()?;
+    let cache_data = Cache::load_current(&cache)
+        .context("No active theme. Run 'huectl apply <theme>' first.")?;
+
+    let theme_name = &cache_data.name;
+    let theme = load_theme(theme_name)
+        .with_context(|| format!("Theme '{}' not found", theme_name))?;
+
+    println!("{} Reloading theme: {}", "::".blue().bold(), theme_name.cyan().bold());
+
+    save_colors_json(&theme, &cache)?;
+    save_current_theme(&theme, &cache)?;
+    println!("  {} Cache updated", "✓".green());
+
+    let config = config_dir()?;
+    let tpl_dir = config.join("templates");
+    if tpl_dir.exists() {
+        let count = process_templates(&theme, &tpl_dir, &cache)?;
+        println!("  {} Processed {} template(s)", "✓".green(), count);
+    }
+
+    let wp_file = cache.join("wallpaper");
+    if wp_file.exists() {
+        let wp_path_str = std::fs::read_to_string(&wp_file)?.trim().to_string();
+        let wp_path = std::path::Path::new(&wp_path_str);
+        apply_wallpaper(wp_path, &cache)?;
+        println!("  {} Wallpaper applied: {}", "✓".green(), wp_path.display());
+    }
+
+    let hook = config_dir()?.join("hooks").join("post_apply.sh");
+    if hook.exists() {
+        println!("  {} Running post-apply hook...", "→".blue());
+        run_hook(&hook, theme_name)?;
+        println!("  {} Hook completed", "✓".green());
+    }
+
+    println!("\n{} Theme '{}' reloaded successfully!", "✓".green().bold(), theme_name.cyan().bold());
     Ok(())
 }
 

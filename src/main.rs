@@ -36,6 +36,9 @@ fn main() -> Result<()> {
         Commands::Current => {
             cli::cmd_current()?;
         }
+        Commands::Reload => {
+            cli::cmd_reload()?;
+        }
     }
 
     Ok(())
