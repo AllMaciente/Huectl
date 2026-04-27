@@ -1,4 +1,4 @@
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -6,8 +6,10 @@ use crate::theme::Theme;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Cache {
-    pub name:   String,
+    pub name: String,
     pub colors: crate::theme::ThemeColors,
+    #[serde(default)]
+    pub custom: std::collections::HashMap<String, String>,
 }
 
 impl Cache {
@@ -17,6 +19,14 @@ impl Cache {
             .with_context(|| format!("Cannot read cache: {}", file.display()))?;
         serde_json::from_str(&content).context("Cannot parse current_theme.json")
     }
+
+    pub fn to_theme(&self) -> Theme {
+        Theme {
+            name: self.name.clone(),
+            colors: self.colors.clone(),
+            custom: self.custom.clone(),
+        }
+    }
 }
 
 pub fn save_colors_json(theme: &Theme, cache_dir: &Path) -> Result<()> {
@@ -24,20 +34,19 @@ pub fn save_colors_json(theme: &Theme, cache_dir: &Path) -> Result<()> {
     let map = theme.colors.to_map();
     let json = serde_json::to_string_pretty(&map).context("Cannot serialize colors")?;
     let path = cache_dir.join("colors.json");
-    std::fs::write(&path, json)
-        .with_context(|| format!("Cannot write {}", path.display()))?;
+    std::fs::write(&path, json).with_context(|| format!("Cannot write {}", path.display()))?;
     Ok(())
 }
 
 pub fn save_current_theme(theme: &Theme, cache_dir: &Path) -> Result<()> {
     std::fs::create_dir_all(cache_dir)?;
     let cache = Cache {
-        name:   theme.name.clone(),
+        name: theme.name.clone(),
         colors: theme.colors.clone(),
+        custom: theme.custom.clone(),
     };
     let json = serde_json::to_string_pretty(&cache).context("Cannot serialize theme")?;
     let path = cache_dir.join("current_theme.json");
-    std::fs::write(&path, json)
-        .with_context(|| format!("Cannot write {}", path.display()))?;
+    std::fs::write(&path, json).with_context(|| format!("Cannot write {}", path.display()))?;
     Ok(())
 }
