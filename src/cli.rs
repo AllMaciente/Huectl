@@ -1,12 +1,12 @@
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use anyhow::{Result, Context};
 use colored::*;
 
-use crate::theme::load_theme;
-use crate::cache::{Cache, save_colors_json, save_current_theme};
+use crate::cache::{save_colors_json, save_current_theme, Cache};
 use crate::template::process_templates;
+use crate::theme::load_theme;
+use crate::utils::{cache_dir, config_dir, run_hooks};
 use crate::wallpaper::{apply_wallpaper, find_theme_wallpaper};
-use crate::utils::{config_dir, cache_dir, run_hook};
 
 #[derive(Parser)]
 #[command(
@@ -24,7 +24,7 @@ pub struct Cli {
 pub enum Commands {
     Apply {
         theme_name: String,
-      
+
         #[arg(long)]
         no_wallpaper: bool,
 
@@ -48,22 +48,28 @@ pub enum Commands {
     Current,
 
     Reload,
+
+    Var {
+        key: String,
+    },
 }
 
 #[derive(Subcommand)]
 pub enum WallpaperCommands {
     Get,
 
-    Set {
-        path: String,
-    },
+    Set { path: String },
 }
 
 pub fn cmd_apply(theme_name: &str, no_wallpaper: bool, no_templates: bool) -> Result<()> {
-    println!("{} Applying theme: {}", "::".blue().bold(), theme_name.cyan().bold());
+    println!(
+        "{} Applying theme: {}",
+        "::".blue().bold(),
+        theme_name.cyan().bold()
+    );
 
-    let theme = load_theme(theme_name)
-        .with_context(|| format!("Theme '{}' not found", theme_name))?;
+    let theme =
+        load_theme(theme_name).with_context(|| format!("Theme '{}' not found", theme_name))?;
 
     println!("  {} Loaded theme '{}'", "✓".green(), theme.name);
 
@@ -82,7 +88,11 @@ pub fn cmd_apply(theme_name: &str, no_wallpaper: bool, no_templates: bool) -> Re
             let count = process_templates(&theme, &tpl_dir, &cache)?;
             println!("  {} Processed {} template(s)", "✓".green(), count);
         } else {
-            println!("  {} No templates directory found ({})", "~".yellow(), tpl_dir.display());
+            println!(
+                "  {} No templates directory found ({})",
+                "~".yellow(),
+                tpl_dir.display()
+            );
         }
     }
 
@@ -95,19 +105,29 @@ pub fn cmd_apply(theme_name: &str, no_wallpaper: bool, no_templates: bool) -> Re
                 println!("  {} Wallpaper applied: {}", "✓".green(), wp_path.display());
             }
             None => {
-                println!("  {} No wallpaper found for theme '{}'", "~".yellow(), theme_name);
+                println!(
+                    "  {} No wallpaper found for theme '{}'",
+                    "~".yellow(),
+                    theme_name
+                );
             }
         }
     }
 
-    let hook = config_dir()?.join("hooks").join("post_apply.sh");
-    if hook.exists() {
-        println!("  {} Running post-apply hook...", "→".blue());
-        run_hook(&hook, theme_name)?;
-        println!("  {} Hook completed", "✓".green());
+    let ctx = theme.template_context();
+    let hooks_dir = config_dir()?.join("hooks");
+    if hooks_dir.exists() {
+        let count = run_hooks(&hooks_dir, theme_name, &ctx)?;
+        if count > 0 {
+            println!("  {} {} hook(s) executed", "✓".green(), count);
+        }
     }
 
-    println!("\n{} Theme '{}' applied successfully!", "✓".green().bold(), theme_name.cyan().bold());
+    println!(
+        "\n{} Theme '{}' applied successfully!",
+        "✓".green().bold(),
+        theme_name.cyan().bold()
+    );
     Ok(())
 }
 
@@ -116,13 +136,19 @@ pub fn cmd_list() -> Result<()> {
     let themes_dir = config.join("themes");
 
     if !themes_dir.exists() {
-        println!("{} No themes directory found at {}", "!".yellow(), themes_dir.display());
+        println!(
+            "{} No themes directory found at {}",
+            "!".yellow(),
+            themes_dir.display()
+        );
         println!("  Create themes at: {}", themes_dir.display());
         return Ok(());
     }
 
     let cache = cache_dir()?;
-    let current = Cache::load_current(&cache).map(|c| c.name).unwrap_or_default();
+    let current = Cache::load_current(&cache)
+        .map(|c| c.name)
+        .unwrap_or_default();
 
     let mut themes: Vec<String> = Vec::new();
 
@@ -145,7 +171,11 @@ pub fn cmd_list() -> Result<()> {
     }
 
     if themes.is_empty() {
-        println!("{} No themes found in {}", "!".yellow(), themes_dir.display());
+        println!(
+            "{} No themes found in {}",
+            "!".yellow(),
+            themes_dir.display()
+        );
         return Ok(());
     }
 
@@ -153,7 +183,12 @@ pub fn cmd_list() -> Result<()> {
     println!("{}", "Available themes:".bold());
     for t in &themes {
         if t == &current {
-            println!("  {} {} {}", "●".green(), t.cyan().bold(), "(active)".dimmed());
+            println!(
+                "  {} {} {}",
+                "●".green(),
+                t.cyan().bold(),
+                "(active)".dimmed()
+            );
         } else {
             println!("  {} {}", "○".dimmed(), t);
         }
@@ -167,25 +202,37 @@ pub fn cmd_colors() -> Result<()> {
     let current = Cache::load_current(&cache)
         .context("No active theme. Run 'huectl apply <theme>' first.")?;
 
-    println!("{} Active theme: {}\n", "::".blue().bold(), current.name.cyan().bold());
+    println!(
+        "{} Active theme: {}\n",
+        "::".blue().bold(),
+        current.name.cyan().bold()
+    );
 
     let colors = &current.colors;
 
     println!("{}", "System colors:".bold());
     print_color_block("background", &colors.background);
     print_color_block("foreground", &colors.foreground);
-    print_color_block("cursor",     &colors.cursor);
+    print_color_block("cursor", &colors.cursor);
 
     println!("\n{}", "ANSI palette:".bold());
     let ansi_colors = [
-        ("color0",  &colors.color0),  ("color8",  &colors.color8),
-        ("color1",  &colors.color1),  ("color9",  &colors.color9),
-        ("color2",  &colors.color2),  ("color10", &colors.color10),
-        ("color3",  &colors.color3),  ("color11", &colors.color11),
-        ("color4",  &colors.color4),  ("color12", &colors.color12),
-        ("color5",  &colors.color5),  ("color13", &colors.color13),
-        ("color6",  &colors.color6),  ("color14", &colors.color14),
-        ("color7",  &colors.color7),  ("color15", &colors.color15),
+        ("color0", &colors.color0),
+        ("color8", &colors.color8),
+        ("color1", &colors.color1),
+        ("color9", &colors.color9),
+        ("color2", &colors.color2),
+        ("color10", &colors.color10),
+        ("color3", &colors.color3),
+        ("color11", &colors.color11),
+        ("color4", &colors.color4),
+        ("color12", &colors.color12),
+        ("color5", &colors.color5),
+        ("color13", &colors.color13),
+        ("color6", &colors.color6),
+        ("color14", &colors.color14),
+        ("color7", &colors.color7),
+        ("color15", &colors.color15),
     ];
 
     for chunk in ansi_colors.chunks(2) {
@@ -193,42 +240,59 @@ pub fn cmd_colors() -> Result<()> {
         let (n2, c2) = chunk[1];
         let block1 = format_color_swatch(c1);
         let block2 = format_color_swatch(c2);
-        println!("  {} {:<10} {}   {} {:<10} {}", block1, n1, c1, block2, n2, c2);
+        println!(
+            "  {} {:<10} {}   {} {:<10} {}",
+            block1, n1, c1, block2, n2, c2
+        );
     }
 
     Ok(())
 }
 
 pub fn cmd_preview(theme_name: &str) -> Result<()> {
-    let theme = load_theme(theme_name)
-        .with_context(|| format!("Theme '{}' not found", theme_name))?;
+    let theme =
+        load_theme(theme_name).with_context(|| format!("Theme '{}' not found", theme_name))?;
 
-    println!("{} Preview: {}\n", "::".blue().bold(), theme.name.cyan().bold());
+    println!(
+        "{} Preview: {}\n",
+        "::".blue().bold(),
+        theme.name.cyan().bold()
+    );
 
     let c = &theme.colors;
     println!("{}", "System colors:".bold());
     print_color_block("background", &c.background);
     print_color_block("foreground", &c.foreground);
-    print_color_block("cursor",     &c.cursor);
+    print_color_block("cursor", &c.cursor);
 
     println!("\n{}", "ANSI palette:".bold());
     let pairs = [
-        ("color0",  &c.color0,  "color8",  &c.color8),
-        ("color1",  &c.color1,  "color9",  &c.color9),
-        ("color2",  &c.color2,  "color10", &c.color10),
-        ("color3",  &c.color3,  "color11", &c.color11),
-        ("color4",  &c.color4,  "color12", &c.color12),
-        ("color5",  &c.color5,  "color13", &c.color13),
-        ("color6",  &c.color6,  "color14", &c.color14),
-        ("color7",  &c.color7,  "color15", &c.color15),
+        ("color0", &c.color0, "color8", &c.color8),
+        ("color1", &c.color1, "color9", &c.color9),
+        ("color2", &c.color2, "color10", &c.color10),
+        ("color3", &c.color3, "color11", &c.color11),
+        ("color4", &c.color4, "color12", &c.color12),
+        ("color5", &c.color5, "color13", &c.color13),
+        ("color6", &c.color6, "color14", &c.color14),
+        ("color7", &c.color7, "color15", &c.color15),
     ];
     for (n1, c1, n2, c2) in &pairs {
-        println!("  {} {:<10} {}   {} {:<10} {}",
-            format_color_swatch(c1), n1, c1,
-            format_color_swatch(c2), n2, c2);
+        println!(
+            "  {} {:<10} {}   {} {:<10} {}",
+            format_color_swatch(c1),
+            n1,
+            c1,
+            format_color_swatch(c2),
+            n2,
+            c2
+        );
     }
 
-    println!("\n{} This is a preview only. Run 'huectl apply {}' to apply.", "→".blue(), theme_name);
+    println!(
+        "\n{} This is a preview only. Run 'huectl apply {}' to apply.",
+        "→".blue(),
+        theme_name
+    );
     Ok(())
 }
 
@@ -261,7 +325,11 @@ pub fn cmd_current() -> Result<()> {
     let current = Cache::load_current(&cache)
         .context("No active theme. Run 'huectl apply <theme>' first.")?;
 
-    println!("{} Current theme: {}", "::".blue().bold(), current.name.cyan().bold());
+    println!(
+        "{} Current theme: {}",
+        "::".blue().bold(),
+        current.name.cyan().bold()
+    );
 
     let wp_file = cache.join("wallpaper");
     if wp_file.exists() {
@@ -271,16 +339,38 @@ pub fn cmd_current() -> Result<()> {
     Ok(())
 }
 
+pub fn cmd_var(key: &str) -> Result<()> {
+    let cache = cache_dir()?;
+    let current = Cache::load_current(&cache)
+        .context("No active theme. Run 'huectl apply <theme>' first.")?;
+
+    let ctx = current.to_theme().template_context();
+
+    match ctx.get(key) {
+        Some(val) => {
+            print!("{}", val);
+            Ok(())
+        }
+        None => {
+            anyhow::bail!("Variable '{}' not found in current theme", key)
+        }
+    }
+}
+
 pub fn cmd_reload() -> Result<()> {
     let cache = cache_dir()?;
     let cache_data = Cache::load_current(&cache)
         .context("No active theme. Run 'huectl apply <theme>' first.")?;
 
     let theme_name = &cache_data.name;
-    let theme = load_theme(theme_name)
-        .with_context(|| format!("Theme '{}' not found", theme_name))?;
+    let theme =
+        load_theme(theme_name).with_context(|| format!("Theme '{}' not found", theme_name))?;
 
-    println!("{} Reloading theme: {}", "::".blue().bold(), theme_name.cyan().bold());
+    println!(
+        "{} Reloading theme: {}",
+        "::".blue().bold(),
+        theme_name.cyan().bold()
+    );
 
     save_colors_json(&theme, &cache)?;
     save_current_theme(&theme, &cache)?;
@@ -301,14 +391,20 @@ pub fn cmd_reload() -> Result<()> {
         println!("  {} Wallpaper applied: {}", "✓".green(), wp_path.display());
     }
 
-    let hook = config_dir()?.join("hooks").join("post_apply.sh");
-    if hook.exists() {
-        println!("  {} Running post-apply hook...", "→".blue());
-        run_hook(&hook, theme_name)?;
-        println!("  {} Hook completed", "✓".green());
+    let ctx = theme.template_context();
+    let hooks_dir = config_dir()?.join("hooks");
+    if hooks_dir.exists() {
+        let count = run_hooks(&hooks_dir, theme_name, &ctx)?;
+        if count > 0 {
+            println!("  {} {} hook(s) executed", "✓".green(), count);
+        }
     }
 
-    println!("\n{} Theme '{}' reloaded successfully!", "✓".green().bold(), theme_name.cyan().bold());
+    println!(
+        "\n{} Theme '{}' reloaded successfully!",
+        "✓".green().bold(),
+        theme_name.cyan().bold()
+    );
     Ok(())
 }
 
