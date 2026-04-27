@@ -1,4 +1,4 @@
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -35,7 +35,8 @@ pub fn find_theme_wallpaper(theme_name: &str, wp_dir: &Path) -> Option<PathBuf> 
 }
 
 pub fn apply_wallpaper(wp_path: &Path, cache_dir: &Path) -> Result<()> {
-    let absolute = wp_path.canonicalize()
+    let absolute = wp_path
+        .canonicalize()
         .with_context(|| format!("Cannot resolve wallpaper path: {}", wp_path.display()))?;
 
     let cache_file = cache_dir.join("wallpaper");
@@ -43,13 +44,16 @@ pub fn apply_wallpaper(wp_path: &Path, cache_dir: &Path) -> Result<()> {
         .context("Cannot write wallpaper cache file")?;
 
     let setters: &[(&str, &[&str])] = &[
-        ("awww",      &["img"]),
-        ("swaybg",    &["--image"]),
-        ("feh",       &["--bg-scale"]),
-        ("nitrogen",  &["--set-scaled", "--save"]),
-        ("gsettings", &["set", "org.gnome.desktop.background", "picture-uri"]),
-        ("xwallpaper",&["--zoom"]),
-        ("hsetroot",  &["-fill"]),
+        ("awww", &["img"]),
+        ("swaybg", &["--image"]),
+        ("feh", &["--bg-scale"]),
+        ("nitrogen", &["--set-scaled", "--save"]),
+        (
+            "gsettings",
+            &["set", "org.gnome.desktop.background", "picture-uri"],
+        ),
+        ("xwallpaper", &["--zoom"]),
+        ("hsetroot", &["-fill"]),
     ];
 
     let path_str = absolute.to_string_lossy().to_string();

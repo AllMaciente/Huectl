@@ -1,6 +1,6 @@
-use anyhow::{Result, Context};
-use std::path::{Path, PathBuf};
+use anyhow::{Context, Result};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 use crate::theme::Theme;
