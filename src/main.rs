@@ -1,19 +1,23 @@
-mod cli;
-mod theme;
-mod template;
-mod wallpaper;
 mod cache;
+mod cli;
+mod template;
+mod theme;
 mod utils;
+mod wallpaper;
 
 use anyhow::Result;
-use cli::{Cli, Commands, WallpaperCommands};
 use clap::Parser;
+use cli::{Cli, Commands, WallpaperCommands};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Apply { theme_name, no_wallpaper, no_templates } => {
+        Commands::Apply {
+            theme_name,
+            no_wallpaper,
+            no_templates,
+        } => {
             cli::cmd_apply(&theme_name, no_wallpaper, no_templates)?;
         }
         Commands::List => {
@@ -38,6 +42,9 @@ fn main() -> Result<()> {
         }
         Commands::Reload => {
             cli::cmd_reload()?;
+        }
+        Commands::Var { key } => {
+            cli::cmd_var(&key)?;
         }
     }
 
