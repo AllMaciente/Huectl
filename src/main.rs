@@ -36,6 +36,9 @@ fn main() -> Result<()> {
             WallpaperCommands::Set { path } => {
                 cli::cmd_wallpaper_set(&path)?;
             }
+            WallpaperCommands::List { theme } => {
+                cli::cmd_wallpaper_list(theme)?;
+            }
         },
         Commands::Current => {
             cli::cmd_current()?;

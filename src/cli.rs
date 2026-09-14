@@ -6,14 +6,16 @@ use crate::cache::{save_colors_json, save_current_theme, Cache};
 use crate::template::process_templates;
 use crate::theme::load_theme;
 use crate::utils::{cache_dir, config_dir, run_hooks};
-use crate::wallpaper::{apply_wallpaper, find_theme_wallpaper};
+use crate::wallpaper::{
+    apply_wallpaper, find_theme_wallpaper, get_default_wallpaper_from_dir, list_theme_wallpapers,
+};
 
 #[derive(Parser)]
 #[command(
     name = "huectl",
     about = "A fast, modular theme manager for Linux",
     version = "0.1.0",
-    long_about = "Huectl manages themes for Linux systems using manual theme definitions and a template engine.\nThemes are stored in ~/.config/huectl/themes/ and templates in ~/.config/huectl/templates/"
+    long_about = "Huectl manages themes for Linux systems using manual theme definitions and a template engine.\nThemes are stored in ~/.config/huectl/themes/ and templates in ~/.config/huectl/templates/\n\nWallpapers can be placed as single files (~/.config/huectl/wallpapers/<theme>.<ext>) or as collections in directories (~/.config/huectl/wallpapers/<theme>/).\nUse 'huectl wallpaper list' to see available wallpapers for the active theme and 'huectl wallpaper set <name>' to apply a named wallpaper from the theme's collection."
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -59,6 +61,11 @@ pub enum WallpaperCommands {
     Get,
 
     Set { path: String },
+
+    List {
+        #[arg(help = "Theme name (defaults to active theme)")]
+        theme: Option<String>,
+    },
 }
 
 pub fn cmd_apply(theme_name: &str, no_wallpaper: bool, no_templates: bool) -> Result<()> {
@@ -99,7 +106,10 @@ pub fn cmd_apply(theme_name: &str, no_wallpaper: bool, no_templates: bool) -> Re
     if !no_wallpaper {
         let config = config_dir()?;
         let wp_dir = config.join("wallpapers");
-        match find_theme_wallpaper(theme_name, &wp_dir) {
+        let wp_path = find_theme_wallpaper(theme_name, &wp_dir).or_else(|| {
+            get_default_wallpaper_from_dir(theme_name, &wp_dir)
+        });
+        match wp_path {
             Some(wp_path) => {
                 apply_wallpaper(&wp_path, &cache)?;
                 println!("  {} Wallpaper applied: {}", "✓".green(), wp_path.display());
@@ -309,15 +319,69 @@ pub fn cmd_wallpaper_get() -> Result<()> {
     Ok(())
 }
 
-pub fn cmd_wallpaper_set(path: &str) -> Result<()> {
-    let p = std::path::Path::new(path);
-    if !p.exists() {
-        anyhow::bail!("File not found: {}", path);
-    }
+pub fn cmd_wallpaper_list(theme_opt: Option<String>) -> Result<()> {
     let cache = cache_dir()?;
-    apply_wallpaper(p, &cache)?;
-    println!("{} Wallpaper set to: {}", "✓".green(), path);
+    let theme_name = match theme_opt {
+        Some(t) => t,
+        None => Cache::load_current(&cache)
+            .context("No active theme. Run 'huectl apply <theme>' first or specify a theme.")?
+            .name,
+    };
+
+    let config = config_dir()?;
+    let wp_dir = config.join("wallpapers");
+    let wallpapers = list_theme_wallpapers(&theme_name, &wp_dir)?;
+
+    if wallpapers.is_empty() {
+        let single = find_theme_wallpaper(&theme_name, &wp_dir);
+        if let Some(path) = single {
+            let name = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("");
+            eprintln!("{} Only a single wallpaper file exists for theme '{}'", "~".yellow(), theme_name);
+            println!("{}", name);
+        } else {
+            anyhow::bail!("No wallpapers found for theme '{}'", theme_name);
+        }
+    } else {
+        for (name, _) in wallpapers {
+            println!("{}", name);
+        }
+    }
     Ok(())
+}
+
+pub fn cmd_wallpaper_set(value: &str) -> Result<()> {
+    let p = std::path::Path::new(value);
+    if p.exists() {
+        let cache = cache_dir()?;
+        apply_wallpaper(p, &cache)?;
+        println!("{} Wallpaper set to: {}", "✓".green(), value);
+        return Ok(());
+    }
+
+    let cache = cache_dir()?;
+    let current = Cache::load_current(&cache)
+        .context("No active theme. Run 'huectl apply <theme>' first.")?;
+
+    let config = config_dir()?;
+    let wp_dir = config.join("wallpapers");
+    let wallpapers = list_theme_wallpapers(&current.name, &wp_dir)?;
+
+    for (name, path) in wallpapers {
+        if name == value {
+            apply_wallpaper(&path, &cache)?;
+            println!("{} Wallpaper set to: {} (from theme '{}')", "✓".green(), path.display(), current.name);
+            return Ok(());
+        }
+    }
+
+    anyhow::bail!(
+        "'{}' is not a valid file path nor a known wallpaper for active theme '{}'",
+        value,
+        current.name
+    );
 }
 
 pub fn cmd_current() -> Result<()> {
