@@ -4,6 +4,12 @@ A fast, modular theme manager for Linux — manual control, template engine, XDG
 
 Inspired by [pywal](https://github.com/dylanaraps/pywal), but without image-based color extraction: **you define your themes, you own your colors.**
 
+> ### 🤖 Vibecoded
+>
+> This project is written almost entirely by AI coding agents, steered by a human. It works, it's tested by using it, and it's held together by prompts, good intentions and `cargo check`.
+>
+> That means: expect fast-moving code, opinionated decisions and the occasional rough edge. Read the source before trusting it with your desktop — and if something looks weird, it probably is. PRs from actual humans are very welcome.
+
 ```
 huectl apply nord
   ✓ Loaded theme 'nord'
